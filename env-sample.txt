@@ -1,0 +1,20 @@
+DB_USER=postgres
+DB_PASSWORD=samplepassword
+DB_HOST=host_ip
+DB_PORT=5432
+DB_NAME=keycloak
+METASTORE_DB=metastore_db
+MINIO_DATABASE=minio_metastore
+METABASE_DB=metabaseappdb
+
+# MLflow Tracking Credentials
+MLFLOW_USERNAME=mlflow_user
+MLFLOW_PASSWORD=mlflow_password
+
+# PostgreSQL Password
+POSTGRES_PASSWORD=y0zhn7HFVMGu9TKafn3T
+
+# MinIO Credentials
+MINIO_ACCESS_KEY=bTFjjZKX7zii4LmRs4GW
+MINIO_ROOT_USER=root
+MINIO_ROOT_PASSWORD=PlOM8wT64lZxGIebtN9pZ6rQPpTluW7uda5AvQzZ
