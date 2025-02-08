@@ -1,12 +1,49 @@
 <script setup>
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
+import { AgFinancialCharts } from "ag-charts-vue3";
+import "ag-charts-enterprise";
+
+// Get current date in YYYY-MM-DD format
+const today = new Date().toISOString().split("T")[0];
 
 const btcData = ref([]);
-const startDate = ref(""); // Start Date
-const endDate = ref("");   // End Date
-const isLoading = ref(false); // Loading state
+const startDate = ref(today); // Default to today's date
+const endDate = ref(today); // Default to today's date
+const isLoading = ref(false);
 
-// Fetch data when clicking the search button
+const chartOptions = ref({
+  title: { text: "📊 BTC/USDT Candlestick Chart", fontSize: 18 },
+  autoSize: true,
+  background: { fill: "white" },
+  axes: [
+    {
+      type: "time",
+      position: "bottom",
+      label: { format: "%Y-%m-%d" },
+    },
+    {
+      type: "number",
+      position: "left",
+      title: { text: "Price (USDT)" },
+      keys: ["open", "high", "low", "close"],
+    },
+  ],
+  series: [
+    {
+      type: "candlestick",
+      xKey: "timestamp",
+      openKey: "open",
+      highKey: "high",
+      lowKey: "low",
+      closeKey: "close",
+      upColor: "#28a745",
+      downColor: "#dc3545",
+    },
+  ],
+  legend: { enabled: false },
+});
+
+// Fetch BTC data from FastAPI
 const fetchData = async () => {
   try {
     if (!startDate.value || !endDate.value) {
@@ -21,20 +58,31 @@ const fetchData = async () => {
     if (!response.ok) throw new Error("Failed to fetch data");
 
     const data = await response.json();
-    btcData.value = data.data;
+    btcData.value = data.data.map((row) => ({
+      timestamp: new Date(row.timestamp),
+      open: row.open,
+      high: row.high,
+      low: row.low,
+      close: row.close,
+    }));
+
+    chartOptions.value = { ...chartOptions.value, data: btcData.value };
   } catch (error) {
     console.error("Error fetching data:", error);
   } finally {
     isLoading.value = false;
   }
 };
+
+// Fetch data when the component is mounted
+onMounted(fetchData);
 </script>
 
 <template>
   <div class="container">
-    <h2>📊 BinanceFlow Data</h2>
+    <h2>BTC</h2>
 
-    <!-- Date Range Filters + Search Button -->
+    <!-- Date Range Selection -->
     <div class="date-filters">
       <div class="input-group">
         <label>Start Date:</label>
@@ -44,40 +92,15 @@ const fetchData = async () => {
         <label>End Date:</label>
         <input type="date" v-model="endDate" />
       </div>
-      <!-- Search Button -->
       <button @click="fetchData">🔍 Search</button>
     </div>
 
     <!-- Loading Indicator -->
     <div v-if="isLoading" class="loading">⏳ Loading data...</div>
 
-    <!-- Data Table -->
-    <div class="table-container">
-      <table>
-        <thead>
-          <tr>
-            <th>📅 Timestamp</th>
-            <th>📈 Open</th>
-            <th>📊 High</th>
-            <th>📉 Low</th>
-            <th>🔴 Close</th>
-            <th>📦 Volume</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in btcData" :key="row.timestamp">
-            <td>{{ row.timestamp }}</td>
-            <td>{{ row.open }}</td>
-            <td>{{ row.high }}</td>
-            <td>{{ row.low }}</td>
-            <td>{{ row.close }}</td>
-            <td>{{ row.volume }}</td>
-          </tr>
-          <tr v-if="btcData.length === 0">
-            <td colspan="6" class="no-data">🚫 No data available</td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- Candlestick Chart -->
+    <div class="chart-container">
+      <ag-financial-charts :options="chartOptions" />
     </div>
   </div>
 </template>
@@ -85,7 +108,7 @@ const fetchData = async () => {
 <style scoped>
 .container {
   width: 90%;
-  max-width: 1000px;
+  max-width: 1200px;
   margin: 40px auto;
   text-align: center;
   font-family: Arial, sans-serif;
@@ -150,39 +173,14 @@ button:hover {
   margin: 10px 0;
 }
 
-/* Table */
-.table-container {
-  display: flex;
-  justify-content: center;
-  overflow-x: auto;
-}
-
-table {
+/* Chart */
+.chart-container {
   width: 100%;
-  border-collapse: collapse;
-  box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-th, td {
-  padding: 12px;
-  border: 1px solid #ddd;
-  text-align: center;
-}
-
-th {
-  background-color: #007bff;
-  color: white;
-}
-
-tr:nth-child(even) {
-  background-color: #f9f9f9;
-}
-
-.no-data {
-  padding: 20px;
-  color: #888;
-  font-style: italic;
+  height: 500px;
+  min-height: 400px;
+  margin-bottom: 20px;
+  background: linear-gradient(180deg, #e3f2fd 0%, #ffffff 100%);
+  border-radius: 10px;
+  padding: 15px;
 }
 </style>
