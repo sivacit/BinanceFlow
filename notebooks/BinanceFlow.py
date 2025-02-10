@@ -30,14 +30,6 @@ start_date = '2020-12-29'
 end_date = '2025-01-31'
 df = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)]
 
-# Visualize Close Price
-plt.figure(figsize=(16, 8))
-plt.title('Close Price History')
-plt.plot(df['Date'], df['close'])
-plt.xlabel('Date', fontsize=18)
-plt.ylabel('Close Price USD ($)', fontsize=18)
-plt.show()
-
 # Prepare Data for Training
 data = df[['close']]
 dataset = data.values
@@ -107,7 +99,6 @@ plt.show()
 conn = psycopg2.connect(DATABASE_URL)
 cursor = conn.cursor()
 
-# Create Predictions Table
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS btc_predictions (
         date TIMESTAMP,
@@ -117,8 +108,10 @@ cursor.execute("""
 """)
 conn.commit()
 
-# Insert Predicted Data
-prediction_data = list(zip(valid.index, valid['close'], valid['Predictions']))
+# Convert timestamps properly
+valid['Date'] = df['Date'].iloc[training_data_len:]  # Use actual timestamps
+prediction_data = list(zip(valid['Date'], map(float, valid['close']), map(float, valid['Predictions'])))
+
 insert_query = "INSERT INTO btc_predictions (date, actual_price, predicted_price) VALUES %s"
 execute_values(cursor, insert_query, prediction_data)
 conn.commit()
@@ -128,16 +121,55 @@ print("✅ Predicted data inserted into QuestDB!")
 cursor.close()
 conn.close()
 
-# Predict Next Close Price
+# Predict Next Close Prices for the Future
 last_60_days = data[-60:].values
 last_60_days_scaled = scaler.transform(last_60_days)
 
-x_test = []
-x_test.append(last_60_days_scaled)
-x_test = np.array(x_test)
-x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+x_future = []
+x_future.append(last_60_days_scaled)
+x_future = np.array(x_future)
+x_future = np.reshape(x_future, (x_future.shape[0], x_future.shape[1], 1))
 
-pred_price = model.predict(x_test)
-pred_price = scaler.inverse_transform(pred_price)
+future_predictions = []
+num_future_steps = 24  # Predict next 24 hours
 
-print(f"Predicted Next Price: {pred_price[0][0]}")
+for _ in range(num_future_steps):
+    pred_price = model.predict(x_future)
+    future_predictions.append(pred_price[0][0])  # Append single prediction
+    x_future = np.append(x_future[:, 1:, :], pred_price.reshape(1, 1, 1), axis=1)
+
+# Convert predictions back to actual values
+future_predictions = scaler.inverse_transform(np.array(future_predictions).reshape(-1, 1)).flatten()
+
+# Generate future timestamps from the last known date
+last_timestamp = df['Date'].max()
+future_timestamps = [last_timestamp + pd.Timedelta(hours=i) for i in range(1, len(future_predictions) + 1)]
+
+# Store Future Predictions in QuestDB
+conn = psycopg2.connect(DATABASE_URL)
+cursor = conn.cursor()
+
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS future_btc_predictions (
+        date TIMESTAMP,
+        predicted_price DOUBLE PRECISION
+    );
+""")
+conn.commit()
+
+# Convert numpy.float32 to Python float
+future_data = list(zip(future_timestamps, map(float, future_predictions)))
+
+insert_query = "INSERT INTO future_btc_predictions (date, predicted_price) VALUES %s"
+execute_values(cursor, insert_query, future_data)
+conn.commit()
+
+print("✅ Future predicted data stored in QuestDB!")
+
+cursor.close()
+conn.close()
+
+# Display Predicted Prices
+print("🔮 Predicted Prices for the Next 24 Hours:")
+for i in range(len(future_timestamps)):
+    print(f"{future_timestamps[i]}: ${future_predictions[i]:.2f}")
