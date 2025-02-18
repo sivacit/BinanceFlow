@@ -1,175 +1,125 @@
-import math
+import requests
 import pandas as pd
-import numpy as np
 import psycopg2
-from psycopg2.extras import execute_values
+import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
-from keras.models import Sequential
-from keras.layers import Dense, LSTM
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout, Bidirectional
 
-plt.style.use('fivethirtyeight')
+# API Endpoint
+ACTUAL_DATA_URL = "http://127.0.0.1:8000/questdb-data"
+PREDICTION_TABLE = "future_btc_predictions"
+QUESTDB_CONNECTION = "postgresql://admin:quest@172.18.0.1:8812/qdb"
 
-# QuestDB Connection
-DATABASE_URL = "postgresql://admin:quest@172.18.0.1:8812/qdb"
+# Fetch actual BTC data
+response = requests.get(ACTUAL_DATA_URL)
+if response.status_code != 200:
+    print(f"❌ Failed to fetch data: {response.status_code}")
+    exit()
 
-# Fetch Data from QuestDB
-conn = psycopg2.connect(DATABASE_URL)
-cursor = conn.cursor()
-query = 'SELECT * FROM "BTCUSDT_1h_data.csv"'
-df = pd.read_sql(query, conn)
-cursor.close()
-conn.close()
+data_raw = pd.DataFrame(response.json())
 
-# Rename 'timestamp' column to 'Date'
-df.rename(columns={'timestamp': 'Date'}, inplace=True)
-df['Date'] = pd.to_datetime(df['Date'])
+# Extract nested JSON data
+data = pd.json_normalize(data_raw['data'])
+data['timestamp'] = pd.to_datetime(data['timestamp'])
+data.set_index('timestamp', inplace=True)
 
-# Filter data within a specific date range
-start_date = '2020-12-29'
-end_date = '2025-01-31'
-df = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)]
+# Select relevant columns
+features = ['open', 'high', 'low', 'close', 'volume']
+data = data[features]
 
-# Prepare Data for Training
-data = df[['close']]
-dataset = data.values
-training_data_len = math.ceil(len(dataset) * 0.8)
+# Feature Engineering: Add SMA and RSI
+data['SMA_10'] = data['close'].rolling(window=10).mean()
+data['RSI'] = 100 - (100 / (1 + (data['close'].diff().clip(lower=0).rolling(14).mean() /
+                                 -data['close'].diff().clip(upper=0).rolling(14).mean())))
+data.dropna(inplace=True)  # Remove NaN values caused by rolling calculations
 
-# Scale the Data
-scaler = MinMaxScaler(feature_range=(0, 1))
-scaled_data = scaler.fit_transform(dataset)
+# Normalize features separately
+scalers = {}
+for col in data.columns:
+    scalers[col] = MinMaxScaler(feature_range=(0, 1))
+    data[col] = scalers[col].fit_transform(data[[col]])
 
-# Create Training Data
-train_data = scaled_data[0:training_data_len, :]
-x_train, y_train = [], []
+# Define function for multi-step sequence creation
+def create_sequences(data, seq_length, future_steps):
+    X, y = [], []
+    for i in range(len(data) - seq_length - future_steps):
+        X.append(data.iloc[i:i+seq_length].values)  # Past sequence
+        y.append(data.iloc[i+seq_length:i+seq_length+future_steps]['close'].values)  # Predict future close prices
+    return np.array(X), np.array(y)
 
-for i in range(60, len(train_data)):
-    x_train.append(train_data[i - 60:i, 0])
-    y_train.append(train_data[i, 0])
+SEQ_LENGTH = 50   # Use past 50 hours
+FUTURE_STEPS = 168  # Predict next 7 days (168 hours)
 
-x_train, y_train = np.array(x_train), np.array(y_train)
-x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1))
+X, y = create_sequences(data, SEQ_LENGTH, FUTURE_STEPS)
 
-# Build LSTM Model
-model = Sequential()
-model.add(LSTM(50, return_sequences=True, input_shape=(x_train.shape[1], 1)))
-model.add(LSTM(50, return_sequences=False))
-model.add(Dense(25))
-model.add(Dense(1))
+# Split into training and test sets
+split = int(len(X) * 0.8)
+X_train, X_test = X[:split], X[split:]
+y_train, y_test = y[:split], y[split:]
 
-# Compile and Train Model
-model.compile(optimizer='adam', loss='mean_squared_error')
-model.fit(x_train, y_train, batch_size=1, epochs=1)
+# Build Improved LSTM Model
+model = Sequential([
+    Bidirectional(LSTM(128, return_sequences=True, input_shape=(SEQ_LENGTH, X.shape[2]))),
+    Dropout(0.3),
+    Bidirectional(LSTM(128, return_sequences=False)),
+    Dropout(0.3),
+    Dense(64, activation='relu'),
+    Dense(FUTURE_STEPS)  # Predicting 168 future values (7 days)
+])
 
-# Create Testing Data
-test_data = scaled_data[training_data_len - 60:, :]
-x_test, y_test = [], dataset[training_data_len:, :]
+model.compile(optimizer='adam', loss=tf.keras.losses.Huber())
 
-for i in range(60, len(test_data)):
-    x_test.append(test_data[i - 60:i, 0])
+# Train model
+model.fit(X_train, y_train, epochs=50, batch_size=32, validation_data=(X_test, y_test))
 
-x_test = np.array(x_test)
-x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+# Predict future 7 days using the last available sequence
+last_sequence = data.iloc[-SEQ_LENGTH:].values.reshape(1, SEQ_LENGTH, X.shape[2])
+future_predictions = model.predict(last_sequence)[0]
 
-# Predict Prices
-predictions = model.predict(x_test)
-predictions = scaler.inverse_transform(predictions)
+# Inverse scale the predictions
+future_predictions_rescaled = scalers['close'].inverse_transform(
+    future_predictions.reshape(-1, 1)).flatten()
 
-# Calculate RMSE
-rmse = np.sqrt(np.mean((predictions - y_test) ** 2))
-print(f"RMSE: {rmse}")
+# Create future timestamps
+future_dates = pd.date_range(start=data.index[-1], periods=FUTURE_STEPS + 1, freq="H")[1:]
 
-# Create Validation DataFrame
-train = data[:training_data_len]
-valid = data[training_data_len:].copy()
-valid['Predictions'] = predictions
+# Prepare forecast DataFrame
+forecast_df = pd.DataFrame({'ds': future_dates, 'yhat': future_predictions_rescaled})
 
-# Plot Actual vs Predicted Prices
-plt.figure(figsize=(16, 8))
-plt.title('Model Predictions')
-plt.plot(train.index, train['close'])
-plt.plot(valid.index, valid[['close', 'Predictions']])
-plt.xlabel('Date', fontsize=18)
-plt.ylabel('Close Price USD ($)', fontsize=18)
-plt.legend(['Train', 'Actual', 'Predictions'], loc='lower right')
-plt.xticks(rotation=45)
+# Insert predictions into QuestDB
+try:
+    conn = psycopg2.connect(QUESTDB_CONNECTION)
+    cursor = conn.cursor()
+    cursor.execute(f"""
+    CREATE TABLE IF NOT EXISTS {PREDICTION_TABLE} (
+        date TIMESTAMP,
+        prediction_price DOUBLE PRECISION
+    ) TIMESTAMP(date);
+    """)
+
+    for _, row in forecast_df.iterrows():
+        cursor.execute(
+            f"INSERT INTO {PREDICTION_TABLE} (date, prediction_price) VALUES (%s, %s);",
+            (row['ds'], row['yhat'])
+        )
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+    print("✅ 7-day predictions successfully stored in QuestDB!")
+
+except Exception as e:
+    print(f"❌ Error inserting predictions into QuestDB: {e}")
+
+# Plot actual vs predicted
+plt.figure(figsize=(12, 6))
+plt.plot(future_dates, future_predictions_rescaled, label="Predicted", color="red", linestyle="dashed")
+plt.legend()
+plt.xlabel("Date")
+plt.ylabel("BTC Price")
+plt.title("BTC Price Prediction (Next 7 Days)")
+plt.grid(True)
 plt.show()
-
-# Store Predictions in QuestDB
-conn = psycopg2.connect(DATABASE_URL)
-cursor = conn.cursor()
-
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS btc_predictions (
-        date TIMESTAMP,
-        actual_price DOUBLE PRECISION,
-        predicted_price DOUBLE PRECISION
-    );
-""")
-conn.commit()
-
-# Convert timestamps properly
-valid['Date'] = df['Date'].iloc[training_data_len:]  # Use actual timestamps
-prediction_data = list(zip(valid['Date'], map(float, valid['close']), map(float, valid['Predictions'])))
-
-insert_query = "INSERT INTO btc_predictions (date, actual_price, predicted_price) VALUES %s"
-execute_values(cursor, insert_query, prediction_data)
-conn.commit()
-
-print("✅ Predicted data inserted into QuestDB!")
-
-cursor.close()
-conn.close()
-
-# Predict Next Close Prices for the Future
-last_60_days = data[-60:].values
-last_60_days_scaled = scaler.transform(last_60_days)
-
-x_future = []
-x_future.append(last_60_days_scaled)
-x_future = np.array(x_future)
-x_future = np.reshape(x_future, (x_future.shape[0], x_future.shape[1], 1))
-
-future_predictions = []
-num_future_steps = 24  # Predict next 24 hours
-
-for _ in range(num_future_steps):
-    pred_price = model.predict(x_future)
-    future_predictions.append(pred_price[0][0])  # Append single prediction
-    x_future = np.append(x_future[:, 1:, :], pred_price.reshape(1, 1, 1), axis=1)
-
-# Convert predictions back to actual values
-future_predictions = scaler.inverse_transform(np.array(future_predictions).reshape(-1, 1)).flatten()
-
-# Generate future timestamps from the last known date
-last_timestamp = df['Date'].max()
-future_timestamps = [last_timestamp + pd.Timedelta(hours=i) for i in range(1, len(future_predictions) + 1)]
-
-# Store Future Predictions in QuestDB
-conn = psycopg2.connect(DATABASE_URL)
-cursor = conn.cursor()
-
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS future_btc_predictions (
-        date TIMESTAMP,
-        predicted_price DOUBLE PRECISION
-    );
-""")
-conn.commit()
-
-# Convert numpy.float32 to Python float
-future_data = list(zip(future_timestamps, map(float, future_predictions)))
-
-insert_query = "INSERT INTO future_btc_predictions (date, predicted_price) VALUES %s"
-execute_values(cursor, insert_query, future_data)
-conn.commit()
-
-print("✅ Future predicted data stored in QuestDB!")
-
-cursor.close()
-conn.close()
-
-# Display Predicted Prices
-print("🔮 Predicted Prices for the Next 24 Hours:")
-for i in range(len(future_timestamps)):
-    print(f"{future_timestamps[i]}: ${future_predictions[i]:.2f}")
