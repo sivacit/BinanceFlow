@@ -33,7 +33,7 @@ def fetch_data(query):
 @app.get("/actual-data")
 async def get_data():
     query = """
-    SELECT "timestamp", "close" FROM BTCUSDT_1h_data.csv ORDER BY "timestamp" ASC
+    SELECT * FROM BTCUSDT_1h_data.csv ORDER BY "timestamp" ASC
     """  # Removed .csv from table name
     rows = fetch_data(query)
     
@@ -82,6 +82,40 @@ async def get_prediction_data():
             data.append({
                 "timestamp": timestamp,
                 "predicted_price": row[1]
+            })
+        except Exception as e:
+            print(f"Error parsing row {row}: {e}")
+
+    return data
+
+@app.get("/candlestick-data")
+async def get_candlestick_data():
+    query = """
+    SELECT timestamp, open, high, low, close,
+    FROM BTCUSDT_1h_data.csv
+    ORDER BY "timestamp" ASC
+    """  # Fetch timestamp, open, high, low, close, volume
+    rows = fetch_data(query)
+    
+    if isinstance(rows, dict):  # Error occurred
+        return rows
+    
+    data = []
+    for row in rows:
+        try:
+            # Ensure timestamp is in correct format
+            timestamp = row[0]
+            if isinstance(timestamp, datetime):
+                timestamp = timestamp.isoformat()
+            else:
+                timestamp = str(timestamp)  # Convert to string if not datetime
+            
+            data.append({
+                "timestamp": timestamp,
+                "open": row[1],
+                "high": row[2],
+                "low": row[3],
+                "close": row[4],
             })
         except Exception as e:
             print(f"Error parsing row {row}: {e}")
