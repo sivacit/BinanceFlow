@@ -1,4 +1,5 @@
 <template>
+  <h1>Candlestick View</h1>
   <div id="chart-container" style="height: 500px;"></div>
 </template>
 
@@ -101,5 +102,9 @@ export default {
 #chart-container {
   width: 100%;
   height: 500px;
+}
+h1{
+  text-align: center;
+  color: aliceblue;
 }
 </style>

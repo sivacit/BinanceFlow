@@ -2,8 +2,12 @@
   <div>
     <div class="header">
       <h1 class="chart-title">BTC/USDT Price Prediction Chart</h1>
-      <!-- Button to redirect to CandleView -->
-      <button @click="handleButtonClick" class="btn">Go to Candle View</button>
+      <div>
+        <!-- Button to filter date -->
+        <button @click="handleFilterDate" class="btn">Filter Date</button>
+        <!-- Button to redirect to CandleView -->
+        <button @click="handleButtonClick" class="btn">Go to Candle View</button>
+      </div>
     </div>
     <div id="chart-container" style="width: 100%; height: 500px;"></div>
   </div>
@@ -66,7 +70,7 @@ export default {
         },
         yAxis: {
           type: "value",
-          scale: true, // Makes the Y-axis scale dynamically
+          scale: true,
           axisLabel: { color: "#ccc" },
           axisLine: { lineStyle: { color: "#888" } },
           splitLine: { show: true, lineStyle: { color: "#444" } },
@@ -79,7 +83,7 @@ export default {
         },
         dataZoom: [
           {
-            type: "inside", // Scroll using mouse wheel or pinch on mobile
+            type: "inside",
           },
           {
             type: "slider",
@@ -112,8 +116,10 @@ export default {
       chart.setOption(option);
     },
     handleButtonClick() {
-      // This triggers navigation to CandleView page
       this.$router.push("/candle-view");
+    },
+    handleFilterDate() {
+      alert("Filter date functionality coming soon!");
     },
   },
 };
@@ -142,6 +148,7 @@ button.btn {
   font-size: 16px;
   cursor: pointer;
   border-radius: 5px;
+  margin-left: 10px;
 }
 
 button.btn:hover {
