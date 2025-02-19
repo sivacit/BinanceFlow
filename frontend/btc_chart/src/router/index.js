@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from "vue-router";
 import BTCChart from "../components/BTCChart.vue";
-import CandleView from "../components/CandleView.vue"; // Import the CandleView component
+import CandleView from "../components/CandleView.vue";
+import FilterDate from "../components/FilterDate.vue"; // Import the FilterDate component
 
 const routes = [
   {
@@ -12,6 +13,11 @@ const routes = [
     path: "/candle-view",
     name: "CandleView",
     component: CandleView,
+  },
+  {
+    path: "/filter-date",
+    name: "FilterDate",
+    component: FilterDate, // Add route for FilterDate component
   },
 ];
 

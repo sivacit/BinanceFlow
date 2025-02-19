@@ -33,7 +33,7 @@ def fetch_data(query):
 @app.get("/actual-data")
 async def get_data():
     query = """
-    SELECT * FROM BTCUSDT_1h_data.csv ORDER BY "timestamp" ASC
+    SELECT date as timestamp, close, low, high, open FROM BTCUSDT_1h_data.csv ORDER BY "timestamp" ASC
     """  # Removed .csv from table name
     rows = fetch_data(query)
     
@@ -91,7 +91,7 @@ async def get_prediction_data():
 @app.get("/candlestick-data")
 async def get_candlestick_data():
     query = """
-    SELECT timestamp, open, high, low, close,
+    SELECT date as timestamp, open, high, low, close,
     FROM BTCUSDT_1h_data.csv
     ORDER BY "timestamp" ASC
     """  # Fetch timestamp, open, high, low, close, volume
