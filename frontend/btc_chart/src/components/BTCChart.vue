@@ -2,11 +2,11 @@
   <div>
     <div class="header">
       <h1 class="chart-title">BTC/USDT Price Prediction Chart</h1>
-      <div>
-        <!-- Button to filter date -->
-        <button @click="handleFilterDate" class="btn">Filter Date</button>
-        <!-- Button to redirect to CandleView -->
-        <button @click="handleButtonClick" class="btn">Go to Candle View</button>
+      <div class="button-group">
+        <!-- Button to navigate to FilterDate page -->
+        <button @click="goToFilterDate" name="FilterDate" class="btn">Filter Date</button>
+        <!-- Button to navigate to CandleView page -->
+        <button @click="goToCandleView" name="CandleView" class="btn">Go to Candle View</button>
       </div>
     </div>
     <div id="chart-container" style="width: 100%; height: 500px;"></div>
@@ -82,16 +82,8 @@ export default {
           containLabel: true,
         },
         dataZoom: [
-          {
-            type: "inside",
-          },
-          {
-            type: "slider",
-            show: true,
-            xAxisIndex: 0,
-            bottom: 5,
-            textStyle: { color: "#ccc" },
-          },
+          { type: "inside" },
+          { type: "slider", show: true, xAxisIndex: 0, bottom: 5, textStyle: { color: "#ccc" } },
         ],
         series: [
           {
@@ -115,11 +107,11 @@ export default {
 
       chart.setOption(option);
     },
-    handleButtonClick() {
+    goToCandleView() {
       this.$router.push("/candle-view");
     },
-    handleFilterDate() {
-      alert("Filter date functionality coming soon!");
+    goToFilterDate() {
+      this.$router.push("/filter-date");
     },
   },
 };
@@ -140,6 +132,11 @@ export default {
   margin-bottom: 20px;
 }
 
+.button-group {
+  display: flex;
+  gap: 10px;
+}
+
 button.btn {
   background-color: #2196f3;
   color: white;
@@ -148,7 +145,6 @@ button.btn {
   font-size: 16px;
   cursor: pointer;
   border-radius: 5px;
-  margin-left: 10px;
 }
 
 button.btn:hover {

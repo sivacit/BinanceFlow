@@ -33,7 +33,7 @@ export default {
   mounted() {
     this.setDefaultDateRange();
     this.fetchCandlestickData();
-    window.addEventListener("resize", this.resizeChart); // Handle resizing
+    window.addEventListener("resize", this.resizeChart); // Resize chart on window resize
   },
   beforeUnmount() {
     window.removeEventListener("resize", this.resizeChart);
@@ -42,6 +42,7 @@ export default {
     }
   },
   methods: {
+    // Set default start and end dates (Last 7 days)
     setDefaultDateRange() {
       const today = new Date();
       this.endDate = today.toISOString().split("T")[0];
@@ -51,6 +52,7 @@ export default {
       this.startDate = pastDate.toISOString().split("T")[0];
     },
 
+    // Fetch filtered candlestick data from API
     async fetchCandlestickData() {
       if (!this.startDate || !this.endDate) {
         alert("Please select both start and end dates.");
@@ -62,24 +64,25 @@ export default {
           `http://127.0.0.1:8000/filtered-actual-data?start=${this.startDate}&end=${this.endDate}`
         );
 
-        console.log("Fetched candlestick data:", response.data);
+        console.log("Filtered Data:", response.data);
 
         this.chartData = response.data.map((item) => [
           item.timestamp,
-          item.actual_price || item.close, // Fallback to close if actual_price is missing
+          item.actual_price || item.close, // Use actual_price, fallback to close
         ]);
 
         if (this.chartData.length === 0) {
-          console.warn("No data available. Chart won't render.");
+          alert("No data found for the selected date range.");
           return;
         }
 
-        this.initChart();
+        this.updateChart();
       } catch (error) {
-        console.error("Error fetching candlestick data:", error);
+        console.error("Error fetching filtered data:", error);
       }
     },
 
+    // Initialize the ECharts chart
     initChart() {
       const chartContainer = document.getElementById("chart-container");
       if (!chartContainer) {
@@ -92,8 +95,18 @@ export default {
       }
 
       this.chartInstance = echarts.init(chartContainer);
+      this.updateChart();
+    },
 
-      const option = {
+    // Update the chart with new filtered data
+    updateChart() {
+      if (!this.chartInstance) {
+        this.initChart();
+      } else {
+        this.chartInstance.clear();
+      }
+
+      this.chartInstance.setOption({
         tooltip: { trigger: "axis", axisPointer: { type: "line" } },
         grid: { top: "10%", bottom: "15%", left: "10%", right: "10%" },
         xAxis: {
@@ -120,20 +133,14 @@ export default {
             type: "line",
             smooth: true,
             data: this.chartData,
-            lineStyle: {
-              color: "#00aaff",
-              width: 2,
-            },
-            areaStyle: {
-              color: "rgba(0, 170, 255, 0.3)",
-            },
+            lineStyle: { color: "#00aaff", width: 2 },
+            areaStyle: { color: "rgba(0, 170, 255, 0.3)" },
           },
         ],
-      };
-
-      this.chartInstance.setOption(option);
+      });
     },
 
+    // Resize the chart on window resize
     resizeChart() {
       if (this.chartInstance) {
         this.chartInstance.resize();
