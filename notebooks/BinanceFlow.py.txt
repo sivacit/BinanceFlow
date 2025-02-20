@@ -1,0 +1,207 @@
+import math
+import pandas_datareader as web
+import numpy as np
+import yfinance as yf
+import pandas as pd
+import os
+import datetime
+from sklearn.preprocessing import MinMaxScaler
+from keras.models import Sequential
+from keras.layers import Dense, LSTM
+import matplotlib.pyplot as plt
+plt.style.use('fivethirtyeight')
+
+# Load the local CSV file
+df = pd.read_csv("/content/'BTCUSDT_1h_data'")
+
+# Assuming the date/timestamp column is named 'timestamp'
+# Rename 'timestamp' column to 'Date' if necessary
+df.rename(columns={'timestamp': 'Date'}, inplace=True)  # Only run if 'timestamp' is the date column
+
+# Make sure the 'Date' column is in datetime format
+df['Date'] = pd.to_datetime(df['Date'])
+
+# Define your start and end dates
+start_date = '2020-12-29'
+end_date = '2025-01-31'
+
+# Filter the dataframe based on the date range
+df_filtered = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)]
+
+# Show the filtered dataframe
+df_filtered
+
+
+#Get the number of Rows and Columns in the data set
+df.shape
+
+#visualize the closing prize
+plt.figure(figsize=(16,8))
+plt.title('Close Price History')
+# Check if the column name is 'close' instead of 'Close'
+plt.plot(df['close'])  # Changed 'Close' to 'close'
+plt.xlabel('Date', fontsize=18)
+plt.ylabel('Close Price USD ($)', fontsize=18)
+plt.show()
+
+#create the new data frame with only the 'close column'
+data = df[['close']] # Use double brackets to select the column
+#convert the dataframe to a numpy array
+dataset = data.values
+#get the number of rows to train the model on
+training_data_len = math.ceil(len(dataset) * 0.8)
+
+training_data_len
+
+
+#scale the data
+scaler = MinMaxScaler(feature_range=(0,1))
+scaled_data = scaler.fit_transform(dataset)
+
+scaled_data
+
+
+#create the training data set
+#create the scaled training data set
+train_data = scaled_data[0:training_data_len, :]
+#split the data into x_train and y_train data sets
+x_train = []
+y_train = []
+
+for i in range(60, len(train_data)):
+    x_train.append(train_data[i-60:i, 0])
+    y_train.append(train_data[i, 0])
+    if i<= 61:
+        print(x_train)
+        print(y_train)
+        print()
+
+#convert the x_train and y_train to numpy arrays
+x_train, y_train = np.array(x_train), np.array(y_train)
+
+#reshape the data
+x_train = np.reshape(x_train, (x_train.shape[0], x_train.shape[1], 1)) # Use x_train.shape[0] instead of shape[0]
+x_train.shape
+
+#bulid the LSTM model
+model = Sequential()
+model.add(LSTM(50, return_sequences=True, input_shape=(x_train.shape[1], 1)))
+model.add(LSTM(50, return_sequences= False,))
+model.add(Dense(25))
+model.add(Dense(1))
+
+#compile the model
+model.compile(optimizer='adam', loss='mean_squared_error')
+
+#train the model
+model.fit(x_train, y_train, batch_size=1, epochs=1)
+
+#create the texting data set
+#create a new scaled values from index 1535 to 2003
+test_data = scaled_data[training_data_len - 60: , :]
+#create the data set x_test and y_test
+x_test = [] # Initialize x_test as a list
+y_test = dataset[training_data_len:, :]
+for i in range (60, len(test_data)):
+  x_test.append(test_data[i-60:i, 0]) # Append to x_test, not x_train
+
+#convert data to a numpy array
+x_test = np.array(x_test) # Convert x_test to a NumPy array after appending
+
+#convert data to a numpy array
+x_test = np.array(x_test)
+
+#reshape the data
+x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+#
+
+#Get the model predicted price value
+predictions = model.predict(x_test)
+predictions = scaler.inverse_transform(predictions)
+
+#Get the root mean squared eror
+rmse = np.sqrt(np.mean(predictions - y_test)**2)
+rmse
+
+#create the new data frame with the 'close' and 'Date' columns
+data = df[['Date', 'close']]  # Include 'Date' column
+
+#convert the dataframe to a numpy array for the model
+dataset = data[['close']].values  # Only use 'close' for the model
+
+# Ensure 'Date' column is in datetime format and set as index
+data['Date'] = pd.to_datetime(data['Date'])
+data.set_index('Date', inplace=True)
+
+# ... (rest of your code) ...
+
+# Splitting data
+train = data[:training_data_len]
+valid = data[training_data_len:]
+
+# Assign Predictions
+valid['Predictions'] = predictions
+
+# Splitting data
+train = data[:training_data_len]
+
+# Visualizing the data
+plt.figure(figsize=(16, 8))
+plt.title('Model')
+plt.xlabel('Date', fontsize=18)
+plt.ylabel('Close Price USD ($)', fontsize=18)
+
+# Plot training data
+plt.plot(train.index, train['close'])
+
+# Plot validation and predictions
+plt.plot(valid.index, valid[['close', 'Predictions']])
+
+plt.legend(['Train', 'Val', 'Predictions'], loc='lower right')
+plt.xticks(rotation=45)  # Rotate x-axis labels for better visibility
+plt.show()
+
+#show the valid and predicted price
+valid
+
+# Get the quote
+start_date = '2024-01-30'
+end_date = '2024-01-30'
+apple_quote2 = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)]
+print(apple_quote2['close'])
+
+
+#Define your start and end dates
+start_date = '2020-12-29'
+end_date = '2025-01-31'
+
+# Filter the data by the given date range
+apple_quote = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)]
+
+# Select the 'close' column
+new_df = apple_quote.filter(['close'])
+
+# Get the last 60 days closing prices and convert to a numpy array
+last_60_days = new_df[-60:].values
+
+# Scale the data
+last_60_days_scaled = scaler.transform(last_60_days)
+
+# Prepare x_test by adding the past 60 days scaled data
+x_test = []
+x_test.append(last_60_days_scaled)
+
+#convert data to a numpy array before reshaping
+x_test = np.array(x_test) # convert x_test to numpy array
+
+# Reshape for model input
+x_test = np.reshape(x_test, (x_test.shape[0], x_test.shape[1], 1))
+
+# Predict the scaled price using the model
+pred_price = model.predict(x_test)
+
+# Undo the scaling to get the original price
+pred_price = scaler.inverse_transform(pred_price)
+
+# Output the predicted price
+print(pred_price)
